@@ -1,0 +1,13 @@
+common:
+  filter: CONFIG_RUST_SUPPORTED
+  platform_allow:
+    - native_sim/native/64
+  integration_platforms:
+    - native_sim/native/64
+tests:
+  test.rust.drivers.gpio-wait:
+    harness: console
+    harness_config:
+      type: one_line
+      regex:
+        - "gpio-wait: all passed"

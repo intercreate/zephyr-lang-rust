@@ -83,6 +83,9 @@ extern int errno;
 #include <zephyr/kernel/thread_stack.h>
 
 #include <zephyr/drivers/gpio.h>
+#ifdef CONFIG_GPIO_EMUL
+#include <zephyr/drivers/gpio/gpio_emul.h>
+#endif
 #include <zephyr/drivers/led.h>
 #include <zephyr/drivers/led_strip.h>
 #include <zephyr/drivers/uart.h>
@@ -128,6 +131,9 @@ ZR_GPIO(GPIO_INT_LOW_0);
 ZR_GPIO(GPIO_INT_HIGH_1);
 ZR_GPIO(GPIO_INT_LEVEL_HIGH);
 ZR_GPIO(GPIO_INT_LEVEL_LOW);
+ZR_GPIO(GPIO_INT_EDGE_RISING);
+ZR_GPIO(GPIO_INT_EDGE_FALLING);
+ZR_GPIO(GPIO_INT_EDGE_BOTH);
 ZR_GPIO(GPIO_OUTPUT_ACTIVE);
 ZR_GPIO(GPIO_OUTPUT_INACTIVE);
 
