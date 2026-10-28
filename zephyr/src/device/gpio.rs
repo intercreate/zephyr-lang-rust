@@ -52,6 +52,9 @@ mod async_io {
         callback: UnsafeCell<gpio_callback>,
     }
 
+    // SAFETY: `callback` is only written under a critical section in `install`, and the remaining
+    // fields are atomics; `pin_mask` updates in `register` and the ISR handler rely on the benign
+    // race described there.
     unsafe impl Sync for GpioStatic {}
 
     impl GpioStatic {
@@ -103,6 +106,8 @@ mod async_io {
             // If it seems that wakes are getting missed, it might be the case that this needs some
             // kind of memory barrier.
             let cb = self.callback.get();
+            // SAFETY: `cb` points to `self.callback`, valid for the borrow; see the note above on
+            // the tolerated race with the ISR handler.
             unsafe {
                 (*cb).pin_mask |= 1 << pin;
             }
@@ -113,6 +118,8 @@ mod async_io {
             cb: *mut gpio_callback,
             mut pins: gpio_port_pins_t,
         ) {
+            // SAFETY: Zephyr passes back the `gpio_callback` registered in `install`, i.e. the
+            // `callback` field of a `'static` `GpioStatic`, so subtracting its offset gives `Self`.
             let data = unsafe {
                 cb.cast::<u8>()
                     .sub(mem::offset_of!(Self, callback))
@@ -209,6 +216,8 @@ mod async_io {
                 _ => unreachable!(),
             };
 
+            // SAFETY: `self.pin.pin.port` is a valid device pointer (a `'static` devicetree device,
+            // or guaranteed by the `raw_new` caller), and the spec is borrowed for the call.
             unsafe {
                 gpio_pin_interrupt_configure_dt(&self.pin.pin, mode);
 
@@ -270,6 +279,7 @@ impl Gpio {
     /// Verify that the device is ready for use.  At a minimum, this means the device has been
     /// successfully initialized.
     pub fn is_ready(&self) -> bool {
+        // SAFETY: `self.device` is a valid `'static` device pointer from devicetree.
         unsafe { raw::device_is_ready(self.device) }
     }
 }
@@ -369,6 +379,7 @@ impl GpioPin {
     /// Concurrency safety is determined by the underlying driver.
     pub fn configure(&mut self, extra_flags: raw::gpio_flags_t) {
         // TODO: Error?
+        // SAFETY: `self.pin.port` is a valid device pointer; `pin` and flags come from the spec.
         unsafe {
             raw::gpio_pin_configure(
                 self.pin.port,
@@ -385,6 +396,7 @@ impl GpioPin {
     /// Concurrency safety is determined by the underlying driver.
     pub fn toggle_pin(&mut self) {
         // TODO: Error?
+        // SAFETY: `&self.pin` is a valid `gpio_dt_spec` whose port is a valid device pointer.
         unsafe {
             raw::gpio_pin_toggle_dt(&self.pin);
         }
@@ -392,6 +404,7 @@ impl GpioPin {
 
     /// Set the logical level of the pin.
     pub fn set(&mut self, value: bool) {
+        // SAFETY: `&self.pin` is a valid `gpio_dt_spec` whose port is a valid device pointer.
         unsafe {
             raw::gpio_pin_set_dt(&self.pin, value as c_int);
         }
@@ -399,6 +412,7 @@ impl GpioPin {
 
     /// Read the logical level of the pin.
     pub fn get(&mut self) -> bool {
+        // SAFETY: `&self.pin` is a valid `gpio_dt_spec` whose port is a valid device pointer.
         unsafe {
             match raw::gpio_pin_get_dt(&self.pin) {
                 0 => false,

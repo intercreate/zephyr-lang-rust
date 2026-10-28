@@ -40,6 +40,7 @@ impl LedStrip {
 
     /// Verify that the underlying LED strip device is ready for use.
     pub fn is_ready(&self) -> bool {
+        // SAFETY: `self.device` is a valid `'static` device pointer from devicetree.
         unsafe { raw::device_is_ready(self.device) }
     }
 
@@ -52,6 +53,8 @@ impl LedStrip {
     ///
     /// The driver may overwrite the contents of `pixels`.
     pub fn update_rgb(&mut self, pixels: &mut [LedRgb]) -> Result<()> {
+        // SAFETY: `self.device` is a valid device, and the pointer and length come from `pixels`,
+        // which is exclusively borrowed for this call.
         to_result_void(unsafe {
             raw::led_strip_update_rgb(self.device, pixels.as_mut_ptr(), pixels.len())
         })
@@ -64,6 +67,8 @@ impl LedStrip {
     ///
     /// The driver may overwrite the contents of `channels`.
     pub fn update_channels(&mut self, channels: &mut [u8]) -> Result<()> {
+        // SAFETY: `self.device` is a valid device, and the pointer and length come from `channels`,
+        // which is exclusively borrowed for this call.
         to_result_void(unsafe {
             raw::led_strip_update_channels(self.device, channels.as_mut_ptr(), channels.len())
         })
@@ -71,6 +76,7 @@ impl LedStrip {
 
     /// Return the number of pixels (LEDs) in the strip.
     pub fn length(&self) -> usize {
+        // SAFETY: `self.device` is a valid `'static` device pointer from devicetree.
         unsafe { raw::led_strip_length(self.device) }
     }
 }

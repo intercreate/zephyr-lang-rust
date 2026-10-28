@@ -26,6 +26,7 @@ impl LedController {
 
     /// Verify that the underlying LED controller is ready for use.
     pub fn is_ready(&self) -> bool {
+        // SAFETY: `self.device` is a valid `'static` device pointer from devicetree.
         unsafe { raw::device_is_ready(self.device) }
     }
 }
@@ -67,26 +68,31 @@ impl Led {
 
     /// Verify that the underlying LED controller is ready for use.
     pub fn is_ready(&self) -> bool {
+        // SAFETY: `self.device` is a valid `'static` device pointer from devicetree.
         unsafe { raw::device_is_ready(self.device) }
     }
 
     /// Set the LED brightness as a percentage in the range `0..=100`.
     pub fn set_brightness(&mut self, value: u8) -> Result<()> {
+        // SAFETY: `self.device` is a valid device; `led_set_brightness` takes no pointer arguments.
         to_result_void(unsafe { raw::led_set_brightness(self.device, self.index, value) })
     }
 
     /// Turn the LED fully on.
     pub fn on(&mut self) -> Result<()> {
+        // SAFETY: `self.device` is a valid device, and `led_on` has no pointer arguments.
         to_result_void(unsafe { raw::led_on(self.device, self.index) })
     }
 
     /// Turn the LED fully off.
     pub fn off(&mut self) -> Result<()> {
+        // SAFETY: `self.device` is a valid device, and `led_off` has no pointer arguments.
         to_result_void(unsafe { raw::led_off(self.device, self.index) })
     }
 
     /// Blink the LED using millisecond delays.
     pub fn blink(&mut self, delay_on: u32, delay_off: u32) -> Result<()> {
+        // SAFETY: `self.device` is a valid device, and `led_blink` has no pointer arguments.
         to_result_void(unsafe { raw::led_blink(self.device, self.index, delay_on, delay_off) })
     }
 }

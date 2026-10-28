@@ -50,12 +50,15 @@ impl I2c {
 
     /// Verify that the underlying I2C device is ready for use.
     pub fn is_ready(&self) -> bool {
+        // SAFETY: `self.device` is a valid `'static` device pointer from devicetree.
         unsafe { raw::device_is_ready(self.device) }
     }
 
     /// Write bytes to an I2C device, then read bytes back in a single transaction (RESTART
     /// between the write and read phases).
     pub fn write_read(&mut self, addr: u16, write_buf: &[u8], read_buf: &mut [u8]) -> Result<()> {
+        // SAFETY: `self.device` is a valid device, and the buffer pointers and lengths come from
+        // slices that outlive this blocking call.
         to_result_void(unsafe {
             raw::i2c_write_read(
                 self.device,
@@ -70,11 +73,14 @@ impl I2c {
 
     /// Write bytes to an I2C device.
     pub fn write(&mut self, addr: u16, buf: &[u8]) -> Result<()> {
+        // SAFETY: `self.device` is a valid device, and `buf` outlives this blocking call.
         to_result_void(unsafe { raw::i2c_write(self.device, buf.as_ptr(), buf.len() as u32, addr) })
     }
 
     /// Read bytes from an I2C device.
     pub fn read(&mut self, addr: u16, buf: &mut [u8]) -> Result<()> {
+        // SAFETY: `self.device` is a valid device, and `buf` is exclusively borrowed for this
+        // blocking call.
         to_result_void(unsafe {
             raw::i2c_read(self.device, buf.as_mut_ptr(), buf.len() as u32, addr)
         })
@@ -123,6 +129,8 @@ impl I2c {
             msgs[i].flags = flags;
         }
 
+        // SAFETY: `self.device` is a valid device, `msgs` holds `ops.len()` initialized messages
+        // whose buffers borrow from `ops`, and the transfer completes before this returns.
         to_result_void(unsafe {
             raw::i2c_transfer(self.device, msgs.as_mut_ptr(), ops.len() as u8, addr)
         })
