@@ -80,7 +80,7 @@ impl Mutex {
 }
 
 impl ObjectInit<k_mutex> for ZephyrObject<k_mutex> {
-    fn init(item: *mut k_mutex) {
+    unsafe fn init(item: *mut k_mutex) {
         // SAFETY: ZephyrObject handles initialization and move prevention.
         unsafe {
             k_mutex_init(item);
@@ -169,7 +169,7 @@ impl Condvar {
 }
 
 impl ObjectInit<k_condvar> for ZephyrObject<k_condvar> {
-    fn init(item: *mut k_condvar) {
+    unsafe fn init(item: *mut k_condvar) {
         // SAFETY: ZephyrObject handles initialization and move prevention.
         unsafe {
             k_condvar_init(item);

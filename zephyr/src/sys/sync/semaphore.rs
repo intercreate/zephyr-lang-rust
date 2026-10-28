@@ -100,7 +100,7 @@ impl Semaphore {
 }
 
 impl ObjectInit<k_sem> for ZephyrObject<k_sem> {
-    fn init(item: *mut k_sem) {
+    unsafe fn init(item: *mut k_sem) {
         // SAFEFY: Get the initial values used in new.  The address may have changed, but only due
         // to a move.
         unsafe {

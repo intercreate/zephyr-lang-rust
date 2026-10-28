@@ -89,7 +89,7 @@ impl Queue {
 }
 
 impl ObjectInit<k_queue> for ZephyrObject<k_queue> {
-    fn init(item: *mut k_queue) {
+    unsafe fn init(item: *mut k_queue) {
         // SAFETY: ZephyrObject handles initialization and move prevention.
         unsafe {
             k_queue_init(item);
