@@ -54,7 +54,7 @@ pub fn run(args: TokenStream, item: TokenStream) -> TokenStream {
         lit: Lit::Int(LitInt::new("2048", Span::call_site())),
     }));
 
-    if !f.sig.asyncness.is_none() {
+    if f.sig.asyncness.is_some() {
         error(&mut errors, &f.sig, "thread function must not be async");
     }
 
@@ -62,7 +62,7 @@ pub fn run(args: TokenStream, item: TokenStream) -> TokenStream {
         error(&mut errors, &f.sig, "thread function must not be generic");
     }
 
-    if !f.sig.generics.where_clause.is_none() {
+    if f.sig.generics.where_clause.is_some() {
         error(
             &mut errors,
             &f.sig,
@@ -70,7 +70,7 @@ pub fn run(args: TokenStream, item: TokenStream) -> TokenStream {
         );
     }
 
-    if !f.sig.abi.is_none() {
+    if f.sig.abi.is_some() {
         error(
             &mut errors,
             &f.sig,
@@ -78,7 +78,7 @@ pub fn run(args: TokenStream, item: TokenStream) -> TokenStream {
         );
     }
 
-    if !f.sig.variadic.is_none() {
+    if f.sig.variadic.is_some() {
         error(&mut errors, &f.sig, "thread function must not be variadic");
     }
 
@@ -242,7 +242,7 @@ fn check_arg_ty(errors: &mut TokenStream, ty: &Type) {
         }
 
         fn visit_lifetime(&mut self, i: &'ast syn::Lifetime) {
-            if i.ident.to_string() != "static" {
+            if i.ident != "static" {
                 error(
                     self.errors,
                     i,

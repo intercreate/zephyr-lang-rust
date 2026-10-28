@@ -94,32 +94,27 @@ impl DeviceTree {
     // otherwise they are just somewhat simply converted.
     fn property_walk(&self, prop: &Property) -> TokenStream {
         // Pattern matching is rather messy at this point.
-        if let Some(value) = prop.get_single_value() {
-            match value {
-                Value::Words(ref words) => {
-                    if words.len() == 1 {
-                        if let Word::Number(n) = &words[0] {
-                            let tag = dt_to_upper_id(&prop.name);
-                            return quote! {
-                                pub const #tag: u32 = #n;
-                            };
-                        }
+        match prop.get_single_value() {
+            Some(Value::Words(words)) => match words.as_slice() {
+                [Word::Number(n)] => {
+                    let tag = dt_to_upper_id(&prop.name);
+                    quote! {
+                        pub const #tag: u32 = #n;
                     }
                 }
-                Value::Phandle(ref ph) => {
-                    let target = ph.node_ref();
-                    let route = target.route_to_rust();
-                    let tag = dt_to_lower_id(&prop.name);
-                    return quote! {
-                        pub mod #tag {
-                            pub use #route::*;
-                        }
-                    };
+                _ => general_property(prop),
+            },
+            Some(Value::Phandle(ph)) => {
+                let route = ph.node_ref().route_to_rust();
+                let tag = dt_to_lower_id(&prop.name);
+                quote! {
+                    pub mod #tag {
+                        pub use #route::*;
+                    }
                 }
-                _ => (),
             }
+            _ => general_property(prop),
         }
-        general_property(prop)
     }
 }
 

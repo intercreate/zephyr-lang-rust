@@ -171,7 +171,7 @@ impl Action {
                     let name = format_ident!("RAW_{}", dt_to_upper_id(&prop.name));
                     let value = prop.value.iter().map(|v| v.to_tokens());
                     quote! {
-                        pub static #name: &'static [crate::devicetree::Value] =
+                        pub static #name: &[crate::devicetree::Value] =
                             &[#(#value),*];
                     }
                 });
