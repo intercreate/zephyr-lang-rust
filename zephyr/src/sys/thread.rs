@@ -79,6 +79,8 @@ pub struct RealStaticThreadStack<const SIZE: usize> {
     extra: [z_thread_stack_element; ZR_STACK_RESERVED],
 }
 
+// SAFETY: The stack bytes are never read or written from Rust; the struct is only used to place
+// memory that is handed to the kernel for a single thread.
 unsafe impl<const SIZE: usize> Sync for RealStaticThreadStack<SIZE> {}
 
 /// The dynamic stack value, which wraps the underlying stack.
@@ -115,6 +117,8 @@ pub struct StaticThreadStack {
     pub size: usize,
 }
 
+// SAFETY: `value` is written only by the const constructors and never afterwards, so sharing
+// `&self` only produces concurrent reads of an immutable base pointer and size.
 unsafe impl Sync for StaticKernelObject<StaticThreadStack> {}
 
 /*
@@ -139,7 +143,11 @@ impl Wrapped for StaticKernelObject<StaticThreadStack> {
     fn get_wrapped(&self, _args: Self::I) -> Self::T {
         // This is a bit messy.  Whee.
         let stack = self.value.get();
+        // SAFETY: `value` is initialized by `new_from` and never mutated, so shared reads are
+        // sound.
         let stack = unsafe { &*stack };
+        // SAFETY: `base` and `size` were taken from a `RealStaticThreadStack` static, which lives
+        // for the whole program.
         unsafe { ThreadStack::new(stack.base, stack.size) }
     }
 }
@@ -176,6 +184,8 @@ impl StaticKernelObject<StaticThreadStack> {
         // let mut res: [MaybeUninit<Self>; N] = MaybeUninit::uninit_array();
         // Note that `mem::uninitialized` in addition to being deprecated, isn't const.  But, since
         // this is a const computation, zero-filling shouldn't hurt anything.
+        // SAFETY: An all-zero `StaticKernelObject<StaticThreadStack>` is valid (null pointer, zero
+        // size and counter, no `Drop`); every element is overwritten below.
         let mut res: [Self; N] = unsafe { mem::zeroed() };
         let mut i = 0;
         while i < N {
@@ -205,6 +215,9 @@ pub struct Thread {
 /// A statically defined thread.
 pub type StaticThread = StaticKernelObject<k_thread>;
 
+// SAFETY: `value` is only handed to the kernel as a raw pointer, and `init_once` gates creation of
+// the wrapper on an atomic, so Rust never forms conflicting references.  Assumes callers do not
+// invoke `Wrapped::get_wrapped` directly more than once.
 unsafe impl Sync for StaticThread {}
 
 impl Wrapped for StaticKernelObject<k_thread> {
@@ -282,6 +295,8 @@ impl Thread {
 
         let child: closure::Closure = Box::new(child);
         let child = Box::into_raw(Box::new(closure::ThreadData { closure: child }));
+        // SAFETY: `self.raw` and the stack are valid for the thread's life per `ThreadStack::new`;
+        // `child` is a leaked box whose ownership passes to `closure::child`; `F` is `Send`.
         unsafe {
             let tid = k_thread_create(
                 self.raw,
@@ -302,6 +317,8 @@ impl Thread {
 
     fn set_thread_name(&mut self, tid: k_tid_t) {
         if let Some(name) = self.name {
+            // SAFETY: `tid` was just returned by `k_thread_create`, and `name` is `'static` and
+            // NUL-terminated.
             unsafe {
                 k_thread_name_set(tid, name.as_ptr());
             }
@@ -523,6 +540,8 @@ mod closure {
     }
 
     pub unsafe extern "C" fn child(child: *mut c_void, _p2: *mut c_void, _p3: *mut c_void) {
+        // SAFETY: `child` is the pointer from `Box::into_raw` in `spawn`, passed once as the
+        // thread's first argument, so this is the unique owner and runs once.
         let thread_data: Box<ThreadData> = unsafe { Box::from_raw(child as *mut ThreadData) };
         let closure = thread_data.closure;
         closure();

@@ -51,9 +51,11 @@ pub struct Mutex<T: ?Sized> {
     data: UnsafeCell<T>,
 }
 
-// At least if correctly done, the Mutex provides for Send and Sync as long as the inner data
-// supports Send.
+// SAFETY: At least if correctly done, the Mutex provides for Send and Sync as long as the inner
+// data supports Send.
 unsafe impl<T: ?Sized + Send> Send for Mutex<T> {}
+// SAFETY: `data` is only reached through a `MutexGuard`, which holds the `k_mutex` and the `locked`
+// flag, so access is exclusive; moving `T` between threads needs `T: Send`.
 unsafe impl<T: ?Sized + Send> Sync for Mutex<T> {}
 
 impl<T> fmt::Debug for Mutex<T> {
@@ -85,6 +87,8 @@ pub struct MutexGuard<'a, T: ?Sized + 'a> {
 // Make sure the guard doesn't get sent.
 // Negative trait bounds are unstable, see marker above.
 // impl<T: ?Sized> !Send for MutexGuard<'_, T> {}
+// SAFETY: A `&MutexGuard` only gives `&T` (mutation needs `&mut self`), so sharing it across
+// threads is sound exactly when `T: Sync`; the `*const ()` marker keeps the guard `!Send`.
 unsafe impl<T: ?Sized + Sync> Sync for MutexGuard<'_, T> {}
 
 impl<T> Mutex<T> {
@@ -125,6 +129,8 @@ impl<T: ?Sized> Mutex<T> {
             self.inner.unlock().unwrap();
             panic!("cannot recursively lock Mutex");
         }
+        // SAFETY: `inner` is locked and `locked` was just swapped false to true, so no other guard
+        // to `data` exists until this one drops.
         unsafe { Ok(MutexGuard::new(self)) }
     }
 
@@ -142,6 +148,8 @@ impl<T: ?Sized> Mutex<T> {
                     self.inner.unlock().unwrap();
                     Err(TryLockError::WouldBlock)
                 } else {
+                    // SAFETY: `inner` is locked and `locked` was just swapped false to true, so no
+                    // other guard to `data` exists until this one drops.
                     unsafe { Ok(MutexGuard::new(self)) }
                 }
             }
@@ -166,12 +174,16 @@ impl<T: ?Sized> Deref for MutexGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
+        // SAFETY: A guard exists only while the mutex is held with `locked` set, so no `&mut T`
+        // aliases this shared borrow.
         unsafe { &*self.lock.data.get() }
     }
 }
 
 impl<T: ?Sized> DerefMut for MutexGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
+        // SAFETY: A guard exists only while the mutex is held with `locked` set, and `&mut self`
+        // makes this the only access through it, so the `&mut T` is unique.
         unsafe { &mut *self.lock.data.get() }
     }
 }

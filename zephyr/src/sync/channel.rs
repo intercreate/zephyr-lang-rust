@@ -142,6 +142,8 @@ pub struct Sender<T> {
 // SAFETY: We implement Send and Sync for the Sender itself, as long as the underlying data can be
 // sent.  The underlying zephyr primitives used for the channel provide the Sync safety.
 unsafe impl<T: Send> Send for Sender<T> {}
+// SAFETY: Same reasoning as `Send` above: a `&Sender` only reaches `Sync` kernel queues and atomic
+// counts, and every message moved through is `T: Send`.
 unsafe impl<T: Send> Sync for Sender<T> {}
 
 impl<T> Sender<T> {
@@ -176,6 +178,9 @@ impl<T> Sender<T> {
                     return Err(SendError(msg));
                 }
                 let buf = buf as *mut Message<T>;
+                // SAFETY: `buf` came from the free queue, so this sender owns the slot until it is
+                // sent; it is a slot of `Bounded<T>` valid for a `Message<T>` write, and is handed
+                // to the kernel only after.
                 unsafe {
                     buf.write(Message::new(msg));
                     chan.chan.send(buf as *mut c_void);
@@ -266,6 +271,8 @@ pub struct Receiver<T> {
 // SAFETY: We implement Send and Sync for the Receiver itself, as long as the underlying data can be
 // sent.  The underlying zephyr primitives used for the channel provide the Sync safety.
 unsafe impl<T: Send> Send for Receiver<T> {}
+// SAFETY: Same reasoning as `Send` above: a `&Receiver` only reaches `Sync` kernel queues and
+// atomic counts, and every message moved out is `T: Send`.
 unsafe impl<T: Send> Sync for Receiver<T> {}
 
 impl<T> Receiver<T> {
@@ -306,7 +313,13 @@ impl<T> Receiver<T> {
                     buf
                 };
                 let buf = rawbuf as *mut Message<T>;
+                // SAFETY: `buf` was just dequeued from `chan`, so it is an initialized `Message<T>`
+                // written by a sender and owned exclusively by this receiver; it is not returned to
+                // the free queue until read.
                 let msg: Message<T> = unsafe { buf.read() };
+                // SAFETY: The slot was fully read out above, so recycling it on the free queue
+                // hands over no live value; `buf` is a slot of this `Bounded` and is not accessed
+                // again here.
                 unsafe {
                     chan.free.send(buf as *mut c_void);
                 }

@@ -184,6 +184,8 @@ impl WorkQueueBuilder {
     ///
     /// TODO: Implement a 'start' that works from a static work queue.
     pub fn start(&self, stack: ThreadStack) -> WorkQueue {
+        // SAFETY: An all-zero `k_work_q` is valid input for `k_work_queue_init`, which initializes
+        // it.
         let item: Fixed<k_work_q> = Fixed::new(unsafe { mem::zeroed() });
         unsafe {
             // SAFETY: Initialize zeroed memory.
@@ -236,7 +238,11 @@ pub struct WorkQueue {
 }
 
 /// Work queues can be referenced from multiple threads, and thus are Send and Sync.
+// SAFETY: A `k_work_q` lives in a pinned allocation that is never freed (`Drop` panics), and the
+// work queue API may be called from any thread.
 unsafe impl Send for WorkQueue {}
+// SAFETY: A `k_work_q` lives in a pinned allocation that is never freed (`Drop` panics), and the
+// work queue API may be called from any thread.
 unsafe impl Sync for WorkQueue {}
 
 impl Drop for WorkQueue {
@@ -269,6 +275,8 @@ struct WorkQueueRef(*mut k_work_q);
 
 // SAFETY: The work queue reference is also safe for both Send and Sync per Zephyr semantics.
 unsafe impl Send for WorkQueueRef {}
+// SAFETY: The wrapper is only a pointer to a `k_work_q` that is never freed and is shared behind a
+// `Mutex`.
 unsafe impl Sync for WorkQueueRef {}
 
 /// Retrieve the current work queue, if we are running within one.
@@ -306,6 +314,8 @@ pub struct Signal {
 
 // SAFETY: Zephyr's API maintains thread safety.
 unsafe impl Send for Signal {}
+// SAFETY: `k_poll_signal` operations take an internal spinlock, and `Fixed` keeps it pinned and
+// never freed while shared.
 unsafe impl Sync for Signal {}
 
 impl Signal {
@@ -315,6 +325,7 @@ impl Signal {
     pub fn new() -> Signal {
         // SAFETY: The memory is zero initialized, and Fixed ensure that it never changes address.
         let item: Fixed<k_poll_signal> = Fixed::new(unsafe { mem::zeroed() });
+        // SAFETY: `item` is pinned, zeroed memory that `k_poll_signal_init` is meant to initialize.
         unsafe {
             k_poll_signal_init(item.get());
         }
@@ -364,6 +375,8 @@ impl Signal {
     /// process of expiring.  The implication is that the signal will not be raised in this case.
     /// ...
     pub fn raise(&self, result: c_int) -> crate::Result<()> {
+        // SAFETY: `self.item` is initialized and pinned; `k_poll_signal_raise` may be called from
+        // any context, including ISRs.
         to_result_void(unsafe { k_poll_signal_raise(self.item.get(), result) })
     }
 }
