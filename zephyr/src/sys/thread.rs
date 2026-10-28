@@ -140,7 +140,7 @@ pub fn doit() {
 impl Wrapped for StaticKernelObject<StaticThreadStack> {
     type T = ThreadStack;
     type I = ();
-    fn get_wrapped(&self, _args: Self::I) -> Self::T {
+    unsafe fn get_wrapped(&self, _args: Self::I) -> Self::T {
         // This is a bit messy.  Whee.
         let stack = self.value.get();
         // SAFETY: `value` is initialized by `new_from` and never mutated, so shared reads are
@@ -223,7 +223,7 @@ unsafe impl Sync for StaticThread {}
 impl Wrapped for StaticKernelObject<k_thread> {
     type T = Thread;
     type I = ThreadStack;
-    fn get_wrapped(&self, stack: Self::I) -> Self::T {
+    unsafe fn get_wrapped(&self, stack: Self::I) -> Self::T {
         Thread {
             raw: self.value.get(),
             stack,

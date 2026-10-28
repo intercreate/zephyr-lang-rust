@@ -264,7 +264,7 @@ pub trait ObjectInit<T> {
 /// impl Wrapped for StaticKernelObject<kobj> {
 ///     type T = Thing,
 ///     type I = (),
-///     fn get_wrapped(&self, args: Self::I) -> Self::T {
+///     unsafe fn get_wrapped(&self, args: Self::I) -> Self::T {
 ///         let ptr = self.value.get();
 ///         // Initizlie the kobj using ptr and possible the args.
 ///         Thing { ptr }
@@ -281,7 +281,11 @@ pub trait Wrapped {
     type I;
 
     /// Initialize this kernel object, and return the wrapped pointer.
-    fn get_wrapped(&self, args: Self::I) -> Self::T;
+    ///
+    /// # Safety
+    ///
+    /// Must be called at most once per object, which `StaticKernelObject::init_once` ensures.
+    unsafe fn get_wrapped(&self, args: Self::I) -> Self::T;
 }
 
 /// A state indicating an uninitialized kernel object.
@@ -357,7 +361,9 @@ where
         {
             return None;
         }
-        let result = self.get_wrapped(args);
+        // SAFETY: The compare-exchange above moved `init` out of `KOBJ_UNINITIALIZED` exactly
+        // once, so this is the only call for this object.
+        let result = unsafe { self.get_wrapped(args) };
         self.init.store(KOBJ_INITIALIZED, Ordering::Release);
         Some(result)
     }

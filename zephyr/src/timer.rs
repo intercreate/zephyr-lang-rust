@@ -163,7 +163,7 @@ impl Wrapped for StaticKernelObject<k_timer> {
     /// No initializers.
     type I = ();
 
-    fn get_wrapped(&self, _arg: Self::I) -> StoppedTimer {
+    unsafe fn get_wrapped(&self, _arg: Self::I) -> StoppedTimer {
         let ptr = self.value.get();
         unsafe {
             // SAFETY: The ptr is static, so it is safe to have Zephyr initialize.  The callback is
