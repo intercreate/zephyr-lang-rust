@@ -1,0 +1,14 @@
+/*
+ * Copyright The Zephyr Project Contributors
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	wait-pins {
+		compatible = "gpio-keys";
+
+		wait_pin: wait_pin {
+			gpios = <&gpio0 1 GPIO_ACTIVE_HIGH>;
+		};
+	};
+};
