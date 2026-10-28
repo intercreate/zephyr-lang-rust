@@ -52,9 +52,8 @@ mod async_io {
         callback: UnsafeCell<gpio_callback>,
     }
 
-    // SAFETY: `callback` is only written under a critical section in `install`, and the remaining
-    // fields are atomics; `pin_mask` updates in `register` and the ISR handler rely on the benign
-    // race described there.
+    // SAFETY: `callback` is only written under a critical section (`install`, and the `pin_mask`
+    // updates in `register` and the ISR handler), and the remaining fields are atomics.
     unsafe impl Sync for GpioStatic {}
 
     impl GpioStatic {
@@ -106,11 +105,11 @@ mod async_io {
             // If it seems that wakes are getting missed, it might be the case that this needs some
             // kind of memory barrier.
             let cb = self.callback.get();
-            // SAFETY: `cb` points to `self.callback`, valid for the borrow; see the note above on
-            // the tolerated race with the ISR handler.
-            unsafe {
-                (*cb).pin_mask |= 1 << pin;
-            }
+            critical_section::with(|_| {
+                // SAFETY: `cb` points to `self.callback`, valid for the borrow, and the critical
+                // section keeps the ISR handler's update of `pin_mask` from interleaving.
+                unsafe { (*cb).pin_mask |= 1 << pin };
+            });
         }
 
         extern "C" fn callback_handler(
@@ -142,7 +141,7 @@ mod async_io {
                     gpio_pin_interrupt_configure(port, pin as u8, ZR_GPIO_INT_MODE_DISABLE_ONLY);
 
                     // Remove the callback bit.  Unclear if this is actually useful.
-                    (*cb).pin_mask &= !(1 << pin);
+                    critical_section::with(|_| (*cb).pin_mask &= !(1 << pin));
 
                     // Indicate that we have fired.
                     // AcqRel is sufficient for ordering across a single atomic.
