@@ -2,9 +2,6 @@ name: Generate and Preview Rust Docs
 
 on:
   pull_request:
-    branches:
-      - main
-      - davidb-*
   push:
     branches:
       - main
