@@ -66,6 +66,9 @@ extern "C" {
 /// allocator as well.
 pub struct ZephyrAllocator;
 
+// SAFETY: `alloc` rounds the size up to a multiple of the alignment as `aligned_alloc` requires,
+// and `dealloc` pairs with libc `free`. The libc heap takes a mutex, so this allocator must not
+// be used from ISRs.
 unsafe impl GlobalAlloc for ZephyrAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         let align = layout.align();

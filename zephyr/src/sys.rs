@@ -36,6 +36,7 @@ pub const K_NO_WAIT: k_timeout_t = k_timeout_t { ticks: 0 };
 /// Direct Zephyr call.  Precision is limited by the system tick timer.
 #[inline]
 pub fn uptime_get() -> i64 {
+    // SAFETY: `k_uptime_get` has no preconditions and may be called from any context.
     unsafe { crate::raw::k_uptime_get() }
 }
 
@@ -65,6 +66,8 @@ pub mod critical {
     struct ZephyrCriticalSection;
     critical_section::set_impl!(ZephyrCriticalSection);
 
+    // SAFETY: `acquire` returns the `irq_lock` key and `release` restores it with `irq_unlock`, so
+    // nesting is sound and the lock is released in the matching order.
     unsafe impl critical_section::Impl for ZephyrCriticalSection {
         unsafe fn acquire() -> RawRestoreState {
             let res = zr_irq_lock();

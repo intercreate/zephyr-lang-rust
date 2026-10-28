@@ -46,6 +46,8 @@ pub(crate) struct Sender<C> {
 impl<C> Sender<C> {
     /// Returns the internal `Counter`.
     fn counter(&self) -> &Counter<C> {
+        // SAFETY: `counter` came from `Box::leak` in `new` and is freed only when both sides have
+        // been released, which cannot happen while `self` still holds a reference.
         unsafe { self.counter.as_ref() }
     }
 
@@ -74,6 +76,9 @@ impl<C> Sender<C> {
             disconnect(&self.counter().chan);
 
             if self.counter().destroy.swap(true, Ordering::AcqRel) {
+                // SAFETY: `destroy` is flipped by whichever side releases last, so exactly one
+                // caller reaches here, after both counts hit zero; the pointer came from
+                // `Box::leak` and is never used again.
                 drop(unsafe { Box::from_raw(self.counter.as_ptr()) });
             }
         }
@@ -102,6 +107,8 @@ pub(crate) struct Receiver<C> {
 impl<C> Receiver<C> {
     /// Returns the internal `Counter`.
     fn counter(&self) -> &Counter<C> {
+        // SAFETY: `counter` came from `Box::leak` in `new` and is freed only when both sides have
+        // been released, which cannot happen while `self` still holds a reference.
         unsafe { self.counter.as_ref() }
     }
 
@@ -129,6 +136,9 @@ impl<C> Receiver<C> {
             disconnect(&self.counter().chan);
 
             if self.counter().destroy.swap(true, Ordering::AcqRel) {
+                // SAFETY: `destroy` is flipped by whichever side releases last, so exactly one
+                // caller reaches here, after both counts hit zero; the pointer came from
+                // `Box::leak` and is never used again.
                 drop(unsafe { Box::from_raw(self.counter.as_ptr()) });
             }
         }

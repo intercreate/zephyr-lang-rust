@@ -119,6 +119,7 @@ pub struct I2cTargetData<T: I2cTargetCallbacks> {
 // the `node` field is managed by Zephyr's internal linked list under its own
 // lock).
 unsafe impl<T: I2cTargetCallbacks> Send for I2cTargetData<T> {}
+// SAFETY: See the `Send` impl above; the same single-writer argument covers shared access.
 unsafe impl<T: I2cTargetCallbacks> Sync for I2cTargetData<T> {}
 
 impl<T: I2cTargetCallbacks> I2cTargetData<T> {
@@ -189,12 +190,10 @@ impl<T: I2cTargetCallbacks> I2cTargetData<T> {
             config.callbacks = self.cbs.get() as *const _;
         }
 
-        if let Err(e) =
-            to_result_void(unsafe { raw::i2c_target_register(i2c.device, self.config.get()) })
-        {
-            self.registered.store(false, Ordering::Release);
-            return Err(e);
-        }
+        // SAFETY: `i2c.device` is a valid device, and `self.config` is `'static` and fully
+        // populated above, so it stays valid while registered.
+        to_result_void(unsafe { raw::i2c_target_register(i2c.device, self.config.get()) })
+            .inspect_err(|_| self.registered.store(false, Ordering::Release))?;
 
         Ok(I2cTarget {
             device: i2c.device,
@@ -211,12 +210,16 @@ impl<T: I2cTargetCallbacks> I2cTargetData<T> {
     ///
     /// `ptr` must originate from the `config` field of a live `I2cTargetData<T>`.
     unsafe fn from_config(ptr: *mut i2c_target_config) -> &'static Self {
+        // SAFETY: The caller guarantees `ptr` is the first field of a live, `'static`
+        // `I2cTargetData<T>`, and the `#[repr(C)]` layout makes it address-equal to `Self`.
         unsafe { &*(ptr as *const Self) }
     }
 
     // -- C-ABI trampoline functions -------------------------------------------
 
     unsafe extern "C" fn write_requested_trampoline(config: *mut i2c_target_config) -> c_int {
+        // SAFETY: Zephyr passes the config registered by `register`, which is the first field of a
+        // `'static` `Self`.
         let this = unsafe { Self::from_config(config) };
         match this.data.write_requested() {
             Ok(()) => 0,
@@ -228,6 +231,8 @@ impl<T: I2cTargetCallbacks> I2cTargetData<T> {
         config: *mut i2c_target_config,
         val: u8,
     ) -> c_int {
+        // SAFETY: Zephyr passes the config registered by `register`, which is the first field of a
+        // `'static` `Self`.
         let this = unsafe { Self::from_config(config) };
         match this.data.write_received(val) {
             Ok(()) => 0,
@@ -239,9 +244,12 @@ impl<T: I2cTargetCallbacks> I2cTargetData<T> {
         config: *mut i2c_target_config,
         val: *mut u8,
     ) -> c_int {
+        // SAFETY: Zephyr passes the config registered by `register`, which is the first field of a
+        // `'static` `Self`.
         let this = unsafe { Self::from_config(config) };
         match this.data.read_requested() {
             Ok(byte) => {
+                // SAFETY: The driver passes a valid, writable `val` for the byte to send.
                 unsafe { *val = byte };
                 0
             }
@@ -253,9 +261,12 @@ impl<T: I2cTargetCallbacks> I2cTargetData<T> {
         config: *mut i2c_target_config,
         val: *mut u8,
     ) -> c_int {
+        // SAFETY: Zephyr passes the config registered by `register`, which is the first field of a
+        // `'static` `Self`.
         let this = unsafe { Self::from_config(config) };
         match this.data.read_processed() {
             Ok(byte) => {
+                // SAFETY: The driver passes a valid, writable `val` for the byte to send.
                 unsafe { *val = byte };
                 0
             }
@@ -264,6 +275,8 @@ impl<T: I2cTargetCallbacks> I2cTargetData<T> {
     }
 
     unsafe extern "C" fn stop_trampoline(config: *mut i2c_target_config) -> c_int {
+        // SAFETY: Zephyr passes the config registered by `register`, which is the first field of a
+        // `'static` `Self`.
         let this = unsafe { Self::from_config(config) };
         match this.data.stop() {
             Ok(()) => 0,
@@ -293,6 +306,8 @@ unsafe impl Send for I2cTarget {}
 impl I2cTarget {
     /// Unregister this I2C target from the bus.
     pub fn unregister(self) -> Result<()> {
+        // SAFETY: `device` and `config` are the pair that was registered and are still valid; for
+        // `register_target` the caller promised the config outlives registration.
         to_result_void(unsafe { raw::i2c_target_unregister(self.device, self.config) })?;
         if let Some(registered) = self.registered {
             registered.store(false, Ordering::Release);

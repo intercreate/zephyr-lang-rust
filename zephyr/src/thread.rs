@@ -65,6 +65,8 @@ impl<T: Send> InitData<T> {
     }
 }
 
+// SAFETY: The cell is written only in a critical section before the thread is created, and read
+// only by the created thread afterwards, so accesses never overlap; `T: Send` covers the handoff.
 unsafe impl<T: Send> Sync for InitData<T> {}
 
 /// The static data associated with each thread.  The stack is kept separate, as it is intended to
@@ -81,6 +83,8 @@ impl<T: Send> ThreadData<T> {
         Self {
             init: InitData::new(),
             state: AtomicU8::new(ThreadState::Init as u8),
+            // SAFETY: `Thread::new` is zeroed memory for a `k_thread`, which is initialized later
+            // by `k_thread_create`.
             thread: unsafe { Thread::new() },
         }
     }
@@ -104,6 +108,8 @@ impl<T: Send> ThreadData<T> {
                 .store(ThreadState::Allocated as u8, Ordering::Relaxed);
 
             let init = self.init.0.get();
+            // SAFETY: This slot was just moved to `Allocated` under the critical section and no
+            // thread has been created on it, so nothing else reads the cell.
             unsafe {
                 *init = Some(args);
             }
@@ -112,6 +118,8 @@ impl<T: Send> ThreadData<T> {
         // For now, just directly start the thread.  We'll want to delay this so that parameters
         // (priority and/or flags) can be passed, as well as to have a handle to be able to join and
         // restart threads.
+        // SAFETY: The thread, stack and init cell are `'static`, and the entry receives the init
+        // cell pointer whose contents were set above; the thread owns that data once it runs.
         let _tid = unsafe {
             k_thread_create(
                 self.thread.0.get(),
@@ -140,11 +148,15 @@ impl<T: Send> ThreadData<T> {
         let id = Self::find_thread(pool);
 
         let init = pool[id].init.0.get();
+        // SAFETY: `find_thread` just claimed this slot under a critical section, so no other thread
+        // or running entry accesses its init cell.
         unsafe {
             *init = Some(args);
         }
 
         // Create the thread in Zephyr, in a non-running state.
+        // SAFETY: The thread, stack and init cell are `'static`, and the entry receives the init
+        // cell pointer whose contents were set above; the thread owns that data once it runs.
         let tid = unsafe {
             k_thread_create(
                 pool[id].thread.0.get(),
@@ -161,6 +173,8 @@ impl<T: Send> ThreadData<T> {
         };
 
         // Set the name.
+        // SAFETY: `tid` was just returned by `k_thread_create`, and `name` is `'static`, NUL
+        // terminated.
         unsafe {
             k_thread_name_set(tid, name.as_ptr());
         }
@@ -193,6 +207,8 @@ impl<T: Send> ThreadData<T> {
                         // A running thread might be available if it has terminated.  We could
                         // improve performance here by not checking these until after the pool has
                         // been checked for Init threads.
+                        // SAFETY: `thread.thread` is a valid `k_thread` for `'static`, and
+                        // `K_NO_WAIT` never blocks.
                         if unsafe { k_thread_join(thread.thread.0.get(), K_NO_WAIT) } == 0 {
                             thread
                                 .state
@@ -259,6 +275,7 @@ impl RunningThread {
         T: Into<Timeout>,
     {
         let timeout: Timeout = timeout.into();
+        // SAFETY: `self.id` is a valid `k_thread` that was created by `k_thread_create`.
         let ret = unsafe { k_thread_join(self.id, timeout.0) };
         to_result_void(ret)
     }
@@ -295,6 +312,8 @@ pub struct ThreadStack<const SIZE: usize> {
     extra: [z_thread_stack_element; ZR_STACK_RESERVED],
 }
 
+// SAFETY: The stack memory is never accessed from Rust; it is only passed to the kernel for the one
+// thread that uses it.
 unsafe impl<const SIZE: usize> Sync for ThreadStack<SIZE> {}
 
 impl<const SIZE: usize> ThreadStack<SIZE> {
@@ -323,6 +342,8 @@ pub struct Thread(pub UnsafeCell<k_thread>);
 
 // Threads are "sort of" thread safe.  But, this declaration is needed to be able to declare these
 // statically, and all generated versions will protect the thread with a critical section.
+// SAFETY: Rust only ever takes the address of the `k_thread` and never reads or writes through it;
+// the kernel owns it, and creation is guarded by the pool's critical section.
 unsafe impl Sync for Thread {}
 
 impl Thread {

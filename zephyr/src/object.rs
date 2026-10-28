@@ -216,7 +216,9 @@ where
             }
 
             // Perform the initialization.
-            <Self as ObjectInit<T>>::init(addr);
+            // SAFETY: `addr` is this object's own storage, and the zero state observed inside the
+            // critical section means nothing else has initialized or used it.
+            unsafe { <Self as ObjectInit<T>>::init(addr) };
 
             self.state.store(addr as usize, Ordering::Release);
 
@@ -234,7 +236,12 @@ pub trait ObjectInit<T> {
     /// the initial address given to the `setup` call in the [`ZephyrObject::new_raw`] constructor.
     /// After this is called, all subsequent calls to [`ZephyrObject::get`] will return the same
     /// address, or panic.
-    fn init(item: *mut T);
+    ///
+    /// # Safety
+    ///
+    /// `item` must point to the storage of a [`ZephyrObject`] that has not been initialized, and
+    /// that storage must not move afterwards.
+    unsafe fn init(item: *mut T);
 }
 
 // The kernel object itself must be wrapped in `UnsafeCell` in Rust.  This does several thing, but
@@ -325,6 +332,8 @@ where
     /// uninitialized.
     pub const unsafe fn new() -> StaticKernelObject<T> {
         StaticKernelObject {
+            // SAFETY: `T` is a Zephyr kernel object type, for which all-zero bytes is a valid, not
+            // yet initialized value; initialization is tracked separately in `init`.
             value: unsafe { mem::zeroed() },
             init: AtomicUsize::new(KOBJ_UNINITIALIZED),
         }

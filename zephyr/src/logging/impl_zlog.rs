@@ -39,6 +39,8 @@ impl Log for ZlogLogger {
         // Append a null so this is a valid C string.  This lets us avoid an additional allocation
         // and copying.
         msg.push('\x00');
+        // SAFETY: `msg` is NUL-terminated by the push above and stays valid for the duration of the
+        // call.
         unsafe {
             rust_log_message(level, msg.as_ptr() as *const c_char);
         }
@@ -55,6 +57,8 @@ extern "C" {
 static ZLOG_LOGGER: ZlogLogger = ZlogLogger;
 
 /// Set the log handler to log messages through Zephyr's logging framework.
+///
+/// # Safety
 ///
 /// This is unsafe due to racy issues in the log framework on targets that do not support atomic
 /// pointers.

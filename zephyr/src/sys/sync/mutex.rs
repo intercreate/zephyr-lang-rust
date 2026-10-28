@@ -67,6 +67,8 @@ impl Mutex {
         T: Into<Timeout>,
     {
         let timeout: Timeout = timeout.into();
+        // SAFETY: `self.item.get()` is valid for the `&self` borrow. `k_mutex_lock` must not be
+        // called from an ISR, which is not enforced here.
         to_result_void(unsafe { k_mutex_lock(self.item.get(), timeout.0) })
     }
 
@@ -75,12 +77,14 @@ impl Mutex {
     /// The mutex must already be locked by the calling thread.  Mutexes may not be unlocked in
     /// ISRs.
     pub fn unlock(&self) -> Result<()> {
+        // SAFETY: `self.item.get()` is valid for the `&self` borrow; the kernel rejects an unlock
+        // by a thread that is not the owner with an error return.
         to_result_void(unsafe { k_mutex_unlock(self.item.get()) })
     }
 }
 
 impl ObjectInit<k_mutex> for ZephyrObject<k_mutex> {
-    fn init(item: *mut k_mutex) {
+    unsafe fn init(item: *mut k_mutex) {
         // SAFETY: ZephyrObject handles initialization and move prevention.
         unsafe {
             k_mutex_init(item);
@@ -97,12 +101,15 @@ impl ObjectInit<k_mutex> for ZephyrObject<k_mutex> {
 /// [`init_once`]: StaticMutex::init_once
 pub type StaticMutex = StaticKernelObject<k_mutex>;
 
+// SAFETY: The `k_mutex` is only used through kernel calls, which are valid from any thread.
 unsafe impl Sync for Mutex {}
+// SAFETY: The `k_mutex` is not tied to a thread; see the `Sync` impl.
 unsafe impl Send for Mutex {}
 
-// Sync and Send are meaningful, as the underlying Zephyr API can use these values from any thread.
-// Care must be taken to use these in a safe manner.
+// SAFETY: Sync and Send are meaningful, as the underlying Zephyr API can use these values from any
+// thread. Care must be taken to use these in a safe manner.
 unsafe impl Sync for StaticMutex {}
+// SAFETY: See the `Sync` impl above.
 unsafe impl Send for StaticMutex {}
 
 impl fmt::Debug for Mutex {
@@ -122,9 +129,12 @@ pub struct Condvar {
 #[doc(hidden)]
 pub type StaticCondvar = StaticKernelObject<k_condvar>;
 
+// SAFETY: The `k_condvar` is only used through kernel calls, which are valid from any thread.
 unsafe impl Sync for StaticKernelObject<k_condvar> {}
 
+// SAFETY: The `k_condvar` is only used through kernel calls, which are valid from any thread.
 unsafe impl Sync for Condvar {}
+// SAFETY: The `k_condvar` is not tied to a thread; see the `Sync` impl.
 unsafe impl Send for Condvar {}
 
 impl Condvar {
@@ -146,6 +156,9 @@ impl Condvar {
     /// [`sync::Condvar`]: http://www.example.com/TODO
     // /// [`sync::Condvar`]: crate::sync::Condvar
     pub fn wait(&self, lock: &Mutex) {
+        // SAFETY: Both `item` pointers are valid for their `&self`/`&Mutex` borrows.
+        // `k_condvar_wait` with `K_FOREVER` may block, so it must not be called from an ISR, which
+        // is not enforced here.
         unsafe {
             k_condvar_wait(self.item.get(), lock.item.get(), K_FOREVER);
         }
@@ -155,6 +168,7 @@ impl Condvar {
 
     /// Wake a single thread waiting on this condition variable.
     pub fn notify_one(&self) {
+        // SAFETY: `self.item.get()` is valid for the `&self` borrow.
         unsafe {
             k_condvar_signal(self.item.get());
         }
@@ -162,6 +176,7 @@ impl Condvar {
 
     /// Wake all threads waiting on this condition variable.
     pub fn notify_all(&self) {
+        // SAFETY: `self.item.get()` is valid for the `&self` borrow.
         unsafe {
             k_condvar_broadcast(self.item.get());
         }
@@ -169,7 +184,7 @@ impl Condvar {
 }
 
 impl ObjectInit<k_condvar> for ZephyrObject<k_condvar> {
-    fn init(item: *mut k_condvar) {
+    unsafe fn init(item: *mut k_condvar) {
         // SAFETY: ZephyrObject handles initialization and move prevention.
         unsafe {
             k_condvar_init(item);

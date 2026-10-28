@@ -58,7 +58,11 @@ pub struct SpinMutex<T: ?Sized> {
 /// satisfies Rust's requirements for Send and Sync.  The dependency of both on "Send" of the data
 /// type is intentional, as it is the Mutex that is providing the Sync semantics.  However, it only
 /// makes sense for types that are usable from multiple thread contexts.
+// SAFETY: `data` is only reached through a guard that holds the spinlock, so access is exclusive;
+// moving `T` between threads needs `T: Send`.
 unsafe impl<T: ?Sized + Send> Send for SpinMutex<T> {}
+// SAFETY: `data` is only reached through a guard that holds the spinlock, so access is exclusive;
+// moving `T` between threads needs `T: Send`.
 unsafe impl<T: ?Sized + Send> Sync for SpinMutex<T> {}
 
 impl<T> fmt::Debug for SpinMutex<T> {
@@ -83,17 +87,21 @@ pub struct SpinMutexGuard<'a, T: ?Sized + 'a> {
     lock: &'a SpinMutex<T>,
     key: raw::k_spinlock_key_t,
     // Mark as not Send.
-    _nosend: PhantomData<UnsafeCell<()>>,
+    _nosend: PhantomData<*const ()>,
 }
 
 // Negative trait bounds are unstable, see the _nosend field above.
 /// Mark as Sync if the contained data is sync.
+// SAFETY: A `&SpinMutexGuard` only gives `&T` (mutation needs `&mut self`), so sharing it is sound
+// when `T: Sync`.
 unsafe impl<T: ?Sized + Sync> Sync for SpinMutexGuard<'_, T> {}
 
 impl<T> SpinMutex<T> {
     /// Construct a new wrapped Mutex.
     pub const fn new(t: T) -> SpinMutex<T> {
         SpinMutex {
+            // SAFETY: An all-zero `k_spinlock` is its valid unlocked state, matching
+            // `K_SPINLOCK_INIT`.
             inner: UnsafeCell::new(unsafe { core::mem::zeroed() }),
             data: UnsafeCell::new(t),
         }
@@ -107,7 +115,10 @@ impl<T: ?Sized> SpinMutex<T> {
     /// Returns an RAII guard to allow scoped unlock of the lock.  When the guard goes out of scope,
     /// the SpinMutex will be unlocked.
     pub fn lock(&self) -> SpinLockResult<SpinMutexGuard<'_, T>> {
+        // SAFETY: `self.inner` is a valid `k_spinlock` for the `&self` borrow; `k_spin_lock` may be
+        // called from any context and the returned key is held in the guard to unlock.
         let key = unsafe { raw::k_spin_lock(self.inner.get()) };
+        // SAFETY: The spinlock was just acquired, giving the guard exclusive access to `data`.
         unsafe { Ok(SpinMutexGuard::new(self, key)) }
     }
 
@@ -119,7 +130,11 @@ impl<T: ?Sized> SpinMutex<T> {
     /// This function does not block.
     pub fn try_lock(&self) -> SpinTryLockResult<SpinMutexGuard<'_, T>> {
         let mut key = raw::k_spinlock_key_t { key: 0 };
+        // SAFETY: `self.inner` is a valid `k_spinlock` for the `&self` borrow and `key` is a valid
+        // out-parameter that is read only if the lock was acquired.
         match unsafe { raw::k_spin_trylock(self.inner.get(), &mut key) } {
+            // SAFETY: `k_spin_trylock` returned 0, so the spinlock is held and the guard owns
+            // `key`.
             0 => unsafe { Ok(SpinMutexGuard::new(self, key)) },
             _ => Err(SpinTryLockError::WouldBlock),
         }
@@ -143,12 +158,16 @@ impl<T: ?Sized> Deref for SpinMutexGuard<'_, T> {
     type Target = T;
 
     fn deref(&self) -> &T {
+        // SAFETY: A guard exists only while the spinlock is held, so no `&mut T` aliases this
+        // borrow.
         unsafe { &*self.lock.data.get() }
     }
 }
 
 impl<T: ?Sized> DerefMut for SpinMutexGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut T {
+        // SAFETY: A guard exists only while the spinlock is held, and `&mut self` makes this the
+        // only access through it, so the `&mut T` is unique.
         unsafe { &mut *self.lock.data.get() }
     }
 }
@@ -156,6 +175,8 @@ impl<T: ?Sized> DerefMut for SpinMutexGuard<'_, T> {
 impl<T: ?Sized> Drop for SpinMutexGuard<'_, T> {
     #[inline]
     fn drop(&mut self) {
+        // SAFETY: The guard holds the lock on `self.lock.inner` with `self.key` from the matching
+        // `k_spin_lock`/`k_spin_trylock`, and is unlocked exactly once here.
         unsafe {
             raw::k_spin_unlock(self.lock.inner.get(), self.key);
         }

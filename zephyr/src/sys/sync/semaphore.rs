@@ -28,7 +28,9 @@ pub struct Semaphore(pub(crate) ZephyrObject<k_sem>);
 
 /// By nature, Semaphores are both Sync and Send.  Safety is handled by the underlying Zephyr
 /// implementation (which is why Clone is also implemented).
+// SAFETY: The `k_sem` is only used through kernel calls, which synchronize internally.
 unsafe impl Sync for Semaphore {}
+// SAFETY: The `k_sem` is not tied to a thread; see the `Sync` impl.
 unsafe impl Send for Semaphore {}
 
 impl Semaphore {
@@ -49,6 +51,8 @@ impl Semaphore {
 
         let this = <ZephyrObject<k_sem>>::new_raw();
 
+        // SAFETY: `this` is not yet shared or initialized by the kernel, so `get_uninit` points to
+        // a live, exclusively owned `k_sem` and writing its plain integer fields is sound.
         unsafe {
             let addr = this.get_uninit();
             (*addr).count = initial_count;
@@ -69,6 +73,8 @@ impl Semaphore {
         T: Into<Timeout>,
     {
         let timeout: Timeout = timeout.into();
+        // SAFETY: `self.0.get()` is valid for the `&self` borrow. A non-zero timeout may block, so
+        // it must not be used from an ISR, which is not enforced here.
         let ret = unsafe { k_sem_take(self.0.get(), timeout.0) };
         to_result_void(ret)
     }
@@ -78,6 +84,8 @@ impl Semaphore {
     /// This routine gives to the semaphore, unless the semaphore is already at its maximum
     /// permitted count.
     pub fn give(&self) {
+        // SAFETY: `self.0.get()` is valid for the `&self` borrow; `k_sem_give` may be called from
+        // any context.
         unsafe { k_sem_give(self.0.get()) }
     }
 
@@ -88,6 +96,7 @@ impl Semaphore {
     ///
     /// [`take`]: Self::take
     pub fn reset(&self) {
+        // SAFETY: `self.0.get()` is valid for the `&self` borrow.
         unsafe { k_sem_reset(self.0.get()) }
     }
 
@@ -95,13 +104,14 @@ impl Semaphore {
     ///
     /// Returns the current count.
     pub fn count_get(&self) -> usize {
+        // SAFETY: `self.0.get()` is valid for the `&self` borrow.
         unsafe { k_sem_count_get(self.0.get()) as usize }
     }
 }
 
 impl ObjectInit<k_sem> for ZephyrObject<k_sem> {
-    fn init(item: *mut k_sem) {
-        // SAFEFY: Get the initial values used in new.  The address may have changed, but only due
+    unsafe fn init(item: *mut k_sem) {
+        // SAFETY: Get the initial values used in new.  The address may have changed, but only due
         // to a move.
         unsafe {
             let count = (*item).count;

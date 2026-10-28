@@ -15,7 +15,10 @@ use crate::time::Timeout;
 /// A wrapper around a Zephyr `k_queue` object.
 pub struct Queue(pub(crate) ZephyrObject<k_queue>);
 
+// SAFETY: The wrapped `k_queue` is only used through kernel calls, which synchronize internally,
+// and `ZephyrObject` initializes it once under a critical section.
 unsafe impl Sync for Queue {}
+// SAFETY: As for `Sync`: the `k_queue` is not tied to a thread and the kernel synchronizes access.
 unsafe impl Send for Queue {}
 
 impl Queue {
@@ -89,7 +92,7 @@ impl Queue {
 }
 
 impl ObjectInit<k_queue> for ZephyrObject<k_queue> {
-    fn init(item: *mut k_queue) {
+    unsafe fn init(item: *mut k_queue) {
         // SAFETY: ZephyrObject handles initialization and move prevention.
         unsafe {
             k_queue_init(item);

@@ -57,6 +57,7 @@ pub type Instant = fugit::Instant<Tick, 1, SYS_FREQUENCY>;
 /// Retrieve the current scheduler time as an Instant.  This can be used to schedule timeouts at
 /// absolute points in time.
 pub fn now() -> Instant {
+    // SAFETY: `k_uptime_ticks` has no preconditions and may be called from any context.
     Instant::from_ticks(unsafe { k_uptime_ticks() as u64 })
 }
 
@@ -137,6 +138,7 @@ where
     T: Into<Timeout>,
 {
     let timeout: Timeout = timeout.into();
+    // SAFETY: `k_sleep` has no pointer arguments; it must be called from a thread, not an ISR.
     let rest = unsafe { crate::raw::k_sleep(timeout.0) };
     Duration::millis(rest as Tick)
 }
