@@ -325,15 +325,14 @@ where
 {
     /// Construct an empty of these objects, with the zephyr data zero-filled.
     ///
-    /// # Safety
-    ///
     /// This is safe in the sense that Zephyr we track the initialization, they start in the
     /// uninitialized state, and the zero value of the initialize atomic indicates that it is
     /// uninitialized.
-    pub const unsafe fn new() -> StaticKernelObject<T> {
+    pub const fn new() -> StaticKernelObject<T> {
         StaticKernelObject {
-            // SAFETY: `T` is a Zephyr kernel object type, for which all-zero bytes is a valid, not
-            // yet initialized value; initialization is tracked separately in `init`.
+            // SAFETY: Only this crate can implement `Wrapped` for `StaticKernelObject<T>` (orphan
+            // rule), and it does so only for C kernel object types, for which all-zero bytes is a
+            // valid, not yet initialized value; initialization is tracked separately in `init`.
             value: unsafe { mem::zeroed() },
             init: AtomicUsize::new(KOBJ_UNINITIALIZED),
         }
