@@ -86,7 +86,8 @@ executor-zephyr = [
   "dep:embassy-executor",
 ]
 
-# Enables async support in various drivers.
+# Enables async support in various drivers.  Async GPIO waits also need
+# CONFIG_GPIO_ENABLE_DISABLE_INTERRUPT, which the GPIO driver must implement.
 async-drivers = [
   "dep:embassy-sync",
 ]

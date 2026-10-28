@@ -235,6 +235,20 @@ ${config_paths}
     COMMENT "Linting Rust application"
   )
 
+  # The target above lints only the application crate: the zephyr crate is a patched path
+  # dependency, not a workspace member, so cargo does not run clippy on it.
+  add_cargo_target_with_zephyr_env(clippy_zephyr
+    OUTPUT run_rust_clippy_zephyr
+    CARGO_ARGS
+      clippy
+      --manifest-path $CACHE{RUST_MODULE_DIR}/zephyr/Cargo.toml
+      --all-features
+      --
+      -D warnings
+      -D clippy::undocumented_unsafe_blocks
+    COMMENT "Linting the zephyr crate"
+  )
+
   # Command to generate the rust docs.
   add_cargo_target_with_zephyr_env(rustdoc
     OUTPUT generate_rust_docs
