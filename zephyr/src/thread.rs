@@ -90,7 +90,11 @@ impl<T: Send> ThreadData<T> {
     }
 
     /// Acquire the thread, in preparation to run it.
-    pub fn acquire_old<const SIZE: usize>(
+    ///
+    /// # Safety
+    ///
+    /// No other thread may ever run on `stack`.
+    pub unsafe fn acquire_old<const SIZE: usize>(
         &'static self,
         args: T,
         stack: &'static ThreadStack<SIZE>,
