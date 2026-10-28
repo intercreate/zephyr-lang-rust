@@ -11,10 +11,6 @@ on:
       - main
       - v*-branch
   pull_request:
-    branches:
-      - main
-      - v*-branch
-      - davidb-*
   schedule:
     - cron: "0 0 * * *"
 
