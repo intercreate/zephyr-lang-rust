@@ -66,6 +66,7 @@
 
 #![no_std]
 #![allow(unexpected_cfgs)]
+#![allow(clippy::new_without_default)]
 #![deny(missing_docs)]
 
 // Allow this crate to refer to itself by name
