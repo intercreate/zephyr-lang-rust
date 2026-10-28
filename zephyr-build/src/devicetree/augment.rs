@@ -239,6 +239,11 @@ impl RawInfo {
                         quote! {
                             #cfg_attr
                             /// Get the raw `const struct device *` of the device tree generated node.
+                            ///
+                            /// # Safety
+                            ///
+                            /// The pointer bypasses the single-instance check of `get_instance`,
+                            /// so the caller must not use it to alias the device returned there.
                             pub unsafe fn get_instance_raw() -> *const crate::raw::device {
                                 &crate::raw::#rawdev
                             }
