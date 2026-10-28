@@ -12,7 +12,7 @@ use core::ffi::c_int;
 use super::{NoStatic, Unique};
 use crate::raw;
 
-#[cfg(feature = "async-drivers")]
+#[cfg(all(feature = "async-drivers", CONFIG_GPIO_ENABLE_DISABLE_INTERRUPT))]
 mod async_io {
     //! Async operations for gpio drivers.
     //!
@@ -233,7 +233,7 @@ mod async_io {
     }
 }
 
-#[cfg(not(feature = "async-drivers"))]
+#[cfg(not(all(feature = "async-drivers", CONFIG_GPIO_ENABLE_DISABLE_INTERRUPT)))]
 mod async_io {
     /// Per-controller static data for GPIO (stub when async-drivers is disabled).
     pub struct GpioStatic;
