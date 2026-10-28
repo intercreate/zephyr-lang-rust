@@ -83,7 +83,7 @@ pub struct SpinMutexGuard<'a, T: ?Sized + 'a> {
     lock: &'a SpinMutex<T>,
     key: raw::k_spinlock_key_t,
     // Mark as not Send.
-    _nosend: PhantomData<UnsafeCell<()>>,
+    _nosend: PhantomData<*const ()>,
 }
 
 // Negative trait bounds are unstable, see the _nosend field above.
