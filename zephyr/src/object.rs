@@ -264,7 +264,7 @@ pub trait ObjectInit<T> {
 /// impl Wrapped for StaticKernelObject<kobj> {
 ///     type T = Thing,
 ///     type I = (),
-///     fn get_wrapped(&self, args: Self::I) -> Self::T {
+///     unsafe fn get_wrapped(&self, args: Self::I) -> Self::T {
 ///         let ptr = self.value.get();
 ///         // Initizlie the kobj using ptr and possible the args.
 ///         Thing { ptr }
@@ -281,7 +281,11 @@ pub trait Wrapped {
     type I;
 
     /// Initialize this kernel object, and return the wrapped pointer.
-    fn get_wrapped(&self, args: Self::I) -> Self::T;
+    ///
+    /// # Safety
+    ///
+    /// Must be called at most once per object, which `StaticKernelObject::init_once` ensures.
+    unsafe fn get_wrapped(&self, args: Self::I) -> Self::T;
 }
 
 /// A state indicating an uninitialized kernel object.
@@ -325,15 +329,14 @@ where
 {
     /// Construct an empty of these objects, with the zephyr data zero-filled.
     ///
-    /// # Safety
-    ///
     /// This is safe in the sense that Zephyr we track the initialization, they start in the
     /// uninitialized state, and the zero value of the initialize atomic indicates that it is
     /// uninitialized.
-    pub const unsafe fn new() -> StaticKernelObject<T> {
+    pub const fn new() -> StaticKernelObject<T> {
         StaticKernelObject {
-            // SAFETY: `T` is a Zephyr kernel object type, for which all-zero bytes is a valid, not
-            // yet initialized value; initialization is tracked separately in `init`.
+            // SAFETY: Only this crate can implement `Wrapped` for `StaticKernelObject<T>` (orphan
+            // rule), and it does so only for C kernel object types, for which all-zero bytes is a
+            // valid, not yet initialized value; initialization is tracked separately in `init`.
             value: unsafe { mem::zeroed() },
             init: AtomicUsize::new(KOBJ_UNINITIALIZED),
         }
@@ -358,7 +361,9 @@ where
         {
             return None;
         }
-        let result = self.get_wrapped(args);
+        // SAFETY: The compare-exchange above moved `init` out of `KOBJ_UNINITIALIZED` exactly
+        // once, so this is the only call for this object.
+        let result = unsafe { self.get_wrapped(args) };
         self.init.store(KOBJ_INITIALIZED, Ordering::Release);
         Some(result)
     }

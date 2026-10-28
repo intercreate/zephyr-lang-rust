@@ -90,7 +90,11 @@ impl<T: Send> ThreadData<T> {
     }
 
     /// Acquire the thread, in preparation to run it.
-    pub fn acquire_old<const SIZE: usize>(
+    ///
+    /// # Safety
+    ///
+    /// No other thread may ever run on `stack`.
+    pub unsafe fn acquire_old<const SIZE: usize>(
         &'static self,
         args: T,
         stack: &'static ThreadStack<SIZE>,
@@ -319,10 +323,7 @@ unsafe impl<const SIZE: usize> Sync for ThreadStack<SIZE> {}
 impl<const SIZE: usize> ThreadStack<SIZE> {
     /// Construct a new ThreadStack
     ///
-    /// # Safety
-    ///
-    /// This is unsafe as the memory remains uninitialized, and it is the responsibility of the
-    /// caller to use the stack correctly.  The stack should be associated with a single thread.
+    /// The stack should be associated with a single thread.
     pub const fn new() -> Self {
         // SAFETY: Although this is declared as zeroed, the linker section actually used on the
         // stack can be used to place it in no-init memory.
