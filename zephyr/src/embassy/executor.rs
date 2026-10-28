@@ -32,6 +32,8 @@ impl Executor {
 
         loop {
             let _ = self.poll_needed.take(Forever);
+            // SAFETY: `inner` was initialized above and is only polled from this thread, so `poll`
+            // is never called concurrently or reentrantly.
             unsafe {
                 // The raw executor's poll only runs things that were queued _before_ this poll
                 // itself is actually run. This means, specifically, that if the polled execution
@@ -51,6 +53,8 @@ impl Default for Executor {
 
 #[export_name = "__pender"]
 fn __pender(context: *mut ()) {
+    // SAFETY: `context` is the `&'static mut Executor` given to `raw::Executor::new`, valid forever
+    // as `run` never returns; `give` only touches the kernel semaphore, which is ISR-safe.
     unsafe {
         let this = context as *const Executor;
         (*this).poll_needed.give();

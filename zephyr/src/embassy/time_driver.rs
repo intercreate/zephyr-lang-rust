@@ -16,6 +16,8 @@ use crate::sys::K_FOREVER;
 
 embassy_time_driver::time_driver_impl!(static DRIVER: ZephyrTimeDriver = ZephyrTimeDriver {
     queue: Mutex::new(RefCell::new(Queue::new())),
+    // SAFETY: A zeroed `ZTimer` is valid (zeroed `k_timer`, `initialized: false`), and
+    // `set_alarm` runs `k_timer_init` before first use.
     timer: Mutex::new(RefCell::new(unsafe { mem::zeroed() })),
 });
 
@@ -39,6 +41,9 @@ impl ZTimer {
 
         // Otherwise, initialize our timer, and handle it.
         if !self.initialized {
+            // SAFETY: `&mut self` is exclusive and `item` lives in the static `DRIVER`, so it never
+            // moves; `initialized` ensures it is initialized once, and `timer_tick` matches the
+            // expiry signature.
             unsafe {
                 k_timer_init(self.item.get(), Some(Self::timer_tick), None);
             }
@@ -51,6 +56,8 @@ impl ZTimer {
             ticks: (next - now + 1) as i64,
         };
         let period = K_FOREVER;
+        // SAFETY: `item` was initialized above and is pinned in the static `DRIVER`; `&mut self`
+        // and the critical section serialize use.
         unsafe {
             k_timer_start(self.item.get(), delta, period);
         }
