@@ -34,10 +34,41 @@ mod async_io {
         gpio_pin_interrupt_configure_dt, gpio_port_pins_t, ZR_GPIO_INT_LEVEL_HIGH,
         ZR_GPIO_INT_LEVEL_LOW, ZR_GPIO_INT_MODE_DISABLE_ONLY,
     };
+    #[cfg(feature = "embedded-hal-async")]
+    use zephyr_sys::{ZR_GPIO_INT_EDGE_BOTH, ZR_GPIO_INT_EDGE_FALLING, ZR_GPIO_INT_EDGE_RISING};
 
+    use crate::error::{to_result_void, Result};
     use crate::sync::atomic::{AtomicBool, AtomicU32};
 
     use super::GpioPin;
+
+    /// The pin condition a [`GpioWait`] completes on.
+    #[derive(Clone, Copy)]
+    pub(crate) enum Trigger {
+        LevelHigh,
+        LevelLow,
+        #[cfg(feature = "embedded-hal-async")]
+        EdgeRising,
+        #[cfg(feature = "embedded-hal-async")]
+        EdgeFalling,
+        #[cfg(feature = "embedded-hal-async")]
+        EdgeBoth,
+    }
+
+    impl Trigger {
+        const fn interrupt_mode(self) -> u32 {
+            match self {
+                Self::LevelHigh => ZR_GPIO_INT_LEVEL_HIGH,
+                Self::LevelLow => ZR_GPIO_INT_LEVEL_LOW,
+                #[cfg(feature = "embedded-hal-async")]
+                Self::EdgeRising => ZR_GPIO_INT_EDGE_RISING,
+                #[cfg(feature = "embedded-hal-async")]
+                Self::EdgeFalling => ZR_GPIO_INT_EDGE_FALLING,
+                #[cfg(feature = "embedded-hal-async")]
+                Self::EdgeBoth => ZR_GPIO_INT_EDGE_BOTH,
+            }
+        }
+    }
 
     /// Per-controller static data for GPIO async operations.
     pub struct GpioStatic {
@@ -158,6 +189,10 @@ mod async_io {
             let value = self.fired.fetch_and(!(1 << pin), Ordering::AcqRel);
             value & (1 << pin) != 0
         }
+
+        fn clear_fired(&self, pin: u8) {
+            self.fired.fetch_and(!(1 << pin), Ordering::AcqRel);
+        }
     }
 
     impl GpioPin {
@@ -166,8 +201,10 @@ mod async_io {
         /// # Safety
         ///
         /// Safety of multiple GPIOs depends on the underlying controller.
-        pub unsafe fn wait_for_high(&mut self) -> impl Future<Output = ()> + use<'_> {
-            GpioWait::new(self, 1)
+        pub async unsafe fn wait_for_high(&mut self) {
+            GpioWait::new(self, Trigger::LevelHigh)
+                .await
+                .unwrap_or_default()
         }
 
         /// Asynchronously wait for a gpio pin to become low.
@@ -175,25 +212,41 @@ mod async_io {
         /// # Safety
         ///
         /// Safety of multiple GPIOs depends on the underlying controller.
-        pub unsafe fn wait_for_low(&mut self) -> impl Future<Output = ()> + use<'_> {
-            GpioWait::new(self, 0)
+        pub async unsafe fn wait_for_low(&mut self) {
+            GpioWait::new(self, Trigger::LevelLow)
+                .await
+                .unwrap_or_default()
         }
     }
 
-    /// A future that waits for a gpio to become high.
+    /// A future that waits for a gpio to meet a [`Trigger`].
+    ///
+    /// Dropping it disables the pin's interrupt and discards an unobserved event, so a later wait
+    /// on the same pin starts clean.
     pub struct GpioWait<'a> {
         pin: &'a mut GpioPin,
-        level: u8,
+        trigger: Trigger,
     }
 
     impl<'a> GpioWait<'a> {
-        fn new(pin: &'a mut GpioPin, level: u8) -> Self {
-            Self { pin, level }
+        pub(crate) fn new(pin: &'a mut GpioPin, trigger: Trigger) -> Self {
+            Self { pin, trigger }
         }
     }
 
-    impl<'a> Future for GpioWait<'a> {
-        type Output = ();
+    impl Drop for GpioWait<'_> {
+        fn drop(&mut self) {
+            // SAFETY: `self.pin.pin.port` is a valid device pointer, as for `poll`. Disabling an
+            // interrupt that is already disabled is a no-op.
+            unsafe {
+                gpio_pin_interrupt_configure_dt(&self.pin.pin, ZR_GPIO_INT_MODE_DISABLE_ONLY);
+            }
+            self.pin.data.clear_fired(self.pin.pin.pin);
+        }
+    }
+
+    impl Future for GpioWait<'_> {
+        type Output = Result<()>;
 
         fn poll(
             self: core::pin::Pin<&mut Self>,
@@ -204,30 +257,23 @@ mod async_io {
             // Early detection of the event.  Also clears.
             // This should be non-racy as long as only one task at a time waits on the gpio.
             if self.pin.data.has_fired(self.pin.pin.pin) {
-                return Poll::Ready(());
+                return Poll::Ready(Ok(()));
             }
 
             self.pin.data.register(self.pin.pin.pin, cx.waker());
 
-            let mode = match self.level {
-                0 => ZR_GPIO_INT_LEVEL_LOW,
-                1 => ZR_GPIO_INT_LEVEL_HIGH,
-                _ => unreachable!(),
-            };
-
             // SAFETY: `self.pin.pin.port` is a valid device pointer (a `'static` devicetree device,
             // or guaranteed by the `raw_new` caller), and the spec is borrowed for the call.
-            unsafe {
-                gpio_pin_interrupt_configure_dt(&self.pin.pin, mode);
+            let configured = to_result_void(unsafe {
+                gpio_pin_interrupt_configure_dt(&self.pin.pin, self.trigger.interrupt_mode())
+            });
 
-                // Before sleeping, check if it fired, to avoid having to pend if it already
-                // happened.
-                if self.pin.data.has_fired(self.pin.pin.pin) {
-                    return Poll::Ready(());
-                }
+            // Before sleeping, check if it fired, to avoid having to pend if it already happened.
+            match configured {
+                Err(e) => Poll::Ready(Err(e)),
+                Ok(()) if self.pin.data.has_fired(self.pin.pin.pin) => Poll::Ready(Ok(())),
+                Ok(()) => Poll::Pending,
             }
-
-            Poll::Pending
         }
     }
 }
