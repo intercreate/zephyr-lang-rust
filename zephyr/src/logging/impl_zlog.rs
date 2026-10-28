@@ -56,6 +56,8 @@ static ZLOG_LOGGER: ZlogLogger = ZlogLogger;
 
 /// Set the log handler to log messages through Zephyr's logging framework.
 ///
+/// # Safety
+///
 /// This is unsafe due to racy issues in the log framework on targets that do not support atomic
 /// pointers.
 pub unsafe fn set_logger() -> Result<(), SetLoggerError> {

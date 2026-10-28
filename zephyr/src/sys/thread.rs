@@ -89,6 +89,11 @@ pub struct ThreadStack {
 
 impl ThreadStack {
     /// Construct a new `ThreadStack` from a raw base pointer and size.
+    ///
+    /// # Safety
+    ///
+    /// `base` must point to a Zephyr thread stack of `size` bytes that outlives every thread
+    /// started on it.
     pub unsafe fn new(base: *mut z_thread_stack_element, size: usize) -> Self {
         Self { base, size }
     }
