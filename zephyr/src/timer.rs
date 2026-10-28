@@ -62,6 +62,8 @@ impl StoppedTimer {
     /// Allocates a dynamically allocate timer.  The time will not be running.
     #[cfg(CONFIG_RUST_ALLOC)]
     pub fn new() -> Self {
+        // SAFETY: A zeroed `k_timer` is a valid not yet initialized value; it is initialized below,
+        // after `Fixed` pins it.
         let item: Fixed<k_timer> = Fixed::new(unsafe { mem::zeroed() });
         unsafe {
             // SAFETY: The `Fixed` type takes care of ensuring the timer is allocate at a fixed or

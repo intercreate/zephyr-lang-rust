@@ -94,6 +94,8 @@ impl Context {
 
     fn flush(&mut self) {
         if self.count > 0 {
+            // SAFETY: `buf` is a live array and `count <= buf.len()` is maintained by `add_byte`,
+            // so the range passed is initialized and in bounds.
             unsafe {
                 zephyr_sys::k_str_out(self.buf.as_mut_ptr() as *mut c_char, self.count);
             }

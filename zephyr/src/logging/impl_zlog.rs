@@ -39,6 +39,8 @@ impl Log for ZlogLogger {
         // Append a null so this is a valid C string.  This lets us avoid an additional allocation
         // and copying.
         msg.push('\x00');
+        // SAFETY: `msg` is NUL-terminated by the push above and stays valid for the duration of the
+        // call.
         unsafe {
             rust_log_message(level, msg.as_ptr() as *const c_char);
         }

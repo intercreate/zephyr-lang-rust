@@ -332,6 +332,8 @@ where
     /// uninitialized.
     pub const unsafe fn new() -> StaticKernelObject<T> {
         StaticKernelObject {
+            // SAFETY: `T` is a Zephyr kernel object type, for which all-zero bytes is a valid, not
+            // yet initialized value; initialization is tracked separately in `init`.
             value: unsafe { mem::zeroed() },
             init: AtomicUsize::new(KOBJ_UNINITIALIZED),
         }

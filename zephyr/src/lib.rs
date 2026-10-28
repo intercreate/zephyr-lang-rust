@@ -132,6 +132,9 @@ pub mod devicetree {
     // Allow nodes to have non-snake-case names.  This comes from addresses in the node names, which
     // usually use uppercase.
     #![allow(non_snake_case)]
+    // `quote!` cannot emit comments. Each generated `get_instance` passes a node's own device
+    // pointer, `Unique` and static to the device constructor, which is that constructor's contract.
+    #![allow(clippy::undocumented_unsafe_blocks)]
 
     /// An expanded property in the devicetree.
     #[derive(Debug)]

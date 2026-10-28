@@ -42,6 +42,7 @@ impl<T: Copy + Send> SimpleTls<T> {
 
     /// Lookup the data associated with a given thread.
     pub fn get(&self) -> Option<T> {
+        // SAFETY: `k_current_get` has no preconditions and returns the current thread's id.
         let thread = unsafe { k_current_get() } as usize;
 
         self.map
