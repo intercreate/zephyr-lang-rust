@@ -1,0 +1,2 @@
+#[cfg(all(CONFIG_GPIO, CONFIG_GPIO_ENABLE_DISABLE_INTERRUPT))]
+mod digital;
